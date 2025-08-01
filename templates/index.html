@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanun Maddeleri İlişki Görselleştiricisi</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .controls {
+            padding: 25px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: end;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 150px;
+        }
+
+        .control-group label {
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 14px;
+        }
+
+        .control-group input, .control-group button {
+            padding: 12px 16px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .control-group input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .control-group button {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            min-width: 120px;
+        }
+
+        .control-group button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+
+        .control-group button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .main-content {
+            display: flex;
+            height: 650px;
+        }
+
+        .visualization {
+            flex: 1;
+            position: relative;
+            background: #f8f9ff;
+        }
+
+        .sidebar {
+            width: 400px;
+            background: #ffffff;
+            border-left: 1px solid #dee2e6;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-section {
+            padding: 20px;
+            flex-shrink: 0;
+        }
+
+        .sidebar-section h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 8px;
+        }
+
+        .law-details {
+            background: #f8f9ff;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 15px;
+        }
+
+        .law-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .law-content {
+            color: #5a6c7d;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        .relations-section {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .relation-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .relation-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .relation-text {
+            font-size: 14px;
+            color: #2c3e50;
+        }
+
+        .relation-remove {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s ease;
+        }
+
+        .status.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .status.success {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+        }
+
+        .status.error {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+        }
+
+        .status.info {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+        }
+
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 1.2em;
+        }
+
+        .loading.show {
+            display: flex;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-right: 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* D3 Graph Styles */
+        .node {
+            cursor: pointer;
+            stroke: #fff;
+            stroke-width: 3px;
+            transition: all 0.3s ease;
+        }
+
+        .node:hover {
+            stroke-width: 4px;
+            filter: brightness(1.1);
+        }
+
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.8;
+            stroke-width: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .link:hover {
+            stroke-opacity: 1;
+            stroke-width: 3px;
+        }
+
+        .node-label {
+        font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+        text-shadow: 0 2px 8px rgba(255,255,255,0.7);
+        pointer-events: none;
+        paint-order: stroke fill;
+        stroke: #fff;
+        stroke-width: 2px;
+        }
+
+        .tooltip {
+            position: absolute;
+            text-align: center;
+            padding: 12px 16px;
+            font-size: 13px;
+            background: rgba(44, 62, 80, 0.95);
+            color: white;
+            border-radius: 8px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            max-width: 300px;
+            line-height: 1.4;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+                height: auto;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: 400px;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .control-group {
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏛️ Kanun Maddeleri Arasındaki Bağlantı Modeli</h1>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>Yeni Kanun Ekle:</label>
+                <input type="text" id="newLawNumber" placeholder="5237" />
+            </div>
+            <div class="control-group">
+                <label>&nbsp;</label>
+                <button onclick="addLaw()" id="addLawBtn">Kanun Ekle</button>
+            </div>
+            
+            <div class="control-group">
+                <label>1. Kanun No:</label>
+                <select id="law1" onchange="populateArticles('law1', 'article1')"></select>
+            </div>
+            <div class="control-group">
+                <label>1. Madde No:</label>
+                <select id="article1"></select>
+            </div>
+            <div class="control-group">
+                <label>2. Kanun No:</label>
+                <select id="law2" onchange="populateArticles('law2', 'article2')"></select>
+            </div>
+            <div class="control-group">
+                <label>2. Madde No:</label>
+                <select id="article2"></select>
+            </div>
+            <div class="control-group">
+                <label>&nbsp;</label>
+                <button onclick="addRelation()">İlişki Ekle</button>
+            </div>
+            <div class="control-group">
+                <label>&nbsp;</label>
+                <button onclick="clearAll()">Temizle</button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="visualization">
+                <svg id="graph"></svg>
+                <div class="tooltip" id="tooltip"></div>
+            </div>
+            
+            <div class="sidebar">
+                <div class="sidebar-section">
+                    <h3>📋 Kanun Detayları</h3>
+                    <div id="lawDetails">
+                        <p>Bir kanun maddesine tıklayın.</p>
+                    </div>
+                </div>
+                
+                <div class="relations-section">
+                    <h3>🔗 Mevcut İlişkiler</h3>
+                    <div id="relationsList">
+                        <p>Henüz ilişki eklenmedi.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status" id="status"></div>
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <span>İşlem devam ediyor...</span>
+    </div>
+
+    <script>
+        // Socket.IO bağlantısı
+        const socket = io();
+        
+        // Global değişkenler
+        let lawData = {};
+        let relations = [];
+        let nodes = [];
+        let links = [];
+        
+        const svg = d3.select("#graph");
+        const tooltip = d3.select("#tooltip");
+        let simulation;
+
+        // Sayfa yüklendiğinde
+        document.addEventListener('DOMContentLoaded', function() {
+            populateLawDropdowns();
+            loadData();
+            loadRelations();
+        });
+
+        // Socket olayları
+        socket.on('connected', function(data) {
+            showStatus('Bağlantı kuruldu', 'success');
+        });
+
+        socket.on('data_updated', function(data) {
+            showStatus('Kanun verileri güncellendi', 'info');
+            loadData();
+        });
+
+        socket.on('law_add_result', function(data) {
+            hideLoading();
+            document.getElementById('addLawBtn').disabled = false;
+            
+            if (data.success) {
+                showStatus(data.message, 'success');
+                loadData();
+            } else {
+                showStatus(data.message, 'error');
+            }
+        });
+
+        socket.on('relations_updated', function(data) {
+            relations = data;
+            updateVisualization();
+            updateRelationsList();
+        });
+
+        // Veri yükleme fonksiyonları
+        async function loadData() {
+            try {
+                const response = await fetch('/api/laws');
+                lawData = await response.json();
+                console.log('Kanun verileri yüklendi:', Object.keys(lawData).length, 'kanun');
+            } catch (error) {
+                console.error('Veri yükleme hatası:', error);
+                showStatus('Veri yükleme hatası', 'error');
+            }
+        }
+
+        async function loadRelations() {
+            try {
+                const response = await fetch('/api/relations');
+                relations = await response.json();
+                updateVisualization();
+                updateRelationsList();
+            } catch (error) {
+                console.error('İlişki yükleme hatası:', error);
+            }
+        }
+
+        async function saveRelations() {
+            try {
+                await fetch('/api/relations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(relations)
+                });
+            } catch (error) {
+                console.error('İlişki kaydetme hatası:', error);
+            }
+        }
+
+        // Kanun ekleme
+        async function addLaw() {
+            const lawNumber = document.getElementById('newLawNumber').value;
+            if (!lawNumber) {
+                showStatus('Lütfen kanun numarası girin', 'error');
+                return;
+            }
+
+            document.getElementById('addLawBtn').disabled = true;
+            showLoading();
+
+            try {
+                const response = await fetch('/api/add_law', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ law_number: lawNumber })
+                });
+
+                const result = await response.json();
+                showStatus(result.message, 'info');
+                document.getElementById('newLawNumber').value = '';
+            } catch (error) {
+                hideLoading();
+                document.getElementById('addLawBtn').disabled = false;
+                showStatus('Kanun ekleme hatası', 'error');
+            }
+        }
+
+        // Ham veri testi
+        async function testRawData() {
+            try {
+                const response = await fetch('/api/test/raw_data');
+                const data = await response.json();
+                console.log('Ham Veri:', data);
+                
+                const detailsDiv = document.getElementById('lawDetails');
+                detailsDiv.innerHTML = `
+                    <h3>📄 Ham Veri Bilgisi</h3>
+                    <div class="law-details">
+                        <div class="law-content">
+                            <strong>Dosya Var mı:</strong> ${data.file_exists ? 'Evet' : 'Hayır'}<br/>
+                            <strong>Dosya Boyutu:</strong> ${data.file_size || 'N/A'} karakter<br/>
+                            <strong>Hata:</strong> ${data.error || 'Yok'}<br/>
+                            <strong>İlk Karakterler:</strong><br/>
+                            <pre style="font-size: 10px; background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; max-height: 300px;">${data.first_chars || 'Veri yok'}</pre>
+                        </div>
+                    </div>
+                `;
+                
+                showStatus('Ham veri bilgisi yüklendi', 'info');
+            } catch (error) {
+                console.error('Ham veri testi hatası:', error);
+                showStatus('Ham veri testi hatası', 'error');
+            }
+        }
+
+        // Madde arama testi
+        async function testSearchArticles() {
+            const lawNumber = prompt('Test etmek istediğiniz kanun numarasını girin (örn: 2709):', '2709');
+            if (!lawNumber) return;
+            
+            try {
+                const response = await fetch(`/api/test/search_all_articles/${lawNumber}`);
+                const data = await response.json();
+                console.log('Madde Arama Testi:', data);
+                
+                const detailsDiv = document.getElementById('lawDetails');
+                detailsDiv.innerHTML = `
+                    <h3>🔍 Madde Arama Testi (${lawNumber})</h3>
+                    <div class="law-details">
+                        <div class="law-content">
+                            <strong>Aranan Kanun:</strong> ${data.law_number_searched}<br/>
+                            <strong>Bulunan Kanun:</strong> ${data.found_law ? data.found_law['Kanun Adı'] : 'Bulunamadı'}<br/>
+                            <strong>Madde Sayısı:</strong> ${data.all_articles.length}<br/>
+                            <br/>
+                            <strong>Bulunan Maddeler:</strong><br/>
+                            <div style="max-height: 300px; overflow-y: auto;">
+                                ${data.all_articles.map(article => `
+                                    <div style="margin: 5px 0; padding: 5px; background: #f8f9fa; border-radius: 3px;">
+                                        <strong>Orijinal:</strong> ${article.original}<br/>
+                                        <strong>Temizlenmiş:</strong> ${article.cleaned}<br/>
+                                        <strong>Metin:</strong> ${article.text_preview}
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <br/>
+                            <strong>Arama Debug:</strong><br/>
+                            <pre style="font-size: 10px; background: #f0f0f0; padding: 5px; border-radius: 3px;">${JSON.stringify(data.search_debug, null, 2)}</pre>
+                        </div>
+                    </div>
+                `;
+                
+                showStatus(`Madde testi tamamlandı: ${data.all_articles.length} madde bulundu`, 'info');
+            } catch (error) {
+                console.error('Madde testi hatası:', error);
+                showStatus('Madde testi hatası', 'error');
+            }
+        }
+        async function debugData() {
+            try {
+                const response = await fetch('/api/debug/laws');
+                const debugInfo = await response.json();
+                console.log('Debug Bilgisi:', debugInfo);
+                
+                const detailsDiv = document.getElementById('lawDetails');
+                detailsDiv.innerHTML = `
+                    <h3>🔍 Debug Bilgisi</h3>
+                    <div class="law-details">
+                        <div class="law-content">
+                            <strong>Veri Tipi:</strong> ${debugInfo.data_type}<br/>
+                            <strong>Veri Uzunluğu:</strong> ${debugInfo.data_length}<br/>
+                            <strong>Örnek Yapı:</strong><br/>
+                            <pre style="font-size: 11px; background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto;">${JSON.stringify(debugInfo.sample_structure, null, 2)}</pre>
+                        </div>
+                    </div>
+                `;
+                
+                showStatus('Debug bilgisi yüklendi (konsola da bakın)', 'info');
+            } catch (error) {
+                console.error('Debug bilgisi yükleme hatası:', error);
+                showStatus('Debug bilgisi yükleme hatası', 'error');
+            }
+        }
+
+        // Gelişmiş debug arama
+        async function debugArticleSearch(law1, article1) {
+            try {
+                const response = await fetch('/api/debug/find_article', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ law_number: law1, article_number: article1 })
+                });
+
+                const debugInfo = await response.json();
+                console.log('Madde Arama Debug:', debugInfo);
+                return debugInfo;
+            } catch (error) {
+                console.error('Debug arama hatası:', error);
+                return null;
+            }
+        }
+
+        // İlişki ekleme fonksiyonunu güncelle
+        async function addRelation() {
+            const law1 = document.getElementById('law1').value;
+            const article1 = document.getElementById('article1').value;
+            const law2 = document.getElementById('law2').value;
+            const article2 = document.getElementById('article2').value;
+
+            if (!law1 || !article1 || !law2 || !article2) {
+                showStatus('Lütfen tüm alanları doldurun', 'error');
+                return;
+            }
+
+            try {
+                // Debug bilgisi al
+                const debug1 = await debugArticleSearch(law1, article1);
+                const debug2 = await debugArticleSearch(law2, article2);
+                
+                console.log('Debug 1:', debug1);
+                console.log('Debug 2:', debug2);
+
+                // Maddeleri kontrol et
+                const response1 = await fetch('/api/find_article', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ law_number: law1, article_number: article1 })
+                });
+
+                const response2 = await fetch('/api/find_article', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ law_number: law2, article_number: article2 })
+                });
+
+                const result1 = await response1.json();
+                const result2 = await response2.json();
+
+                console.log('Result 1:', result1);
+                console.log('Result 2:', result2);
+
+                if (!result1.success) {
+                    showStatus(`1. Kanun maddesi bulunamadı (${law1} M.${article1})`, 'error');
+                    return;
+                }
+                
+                if (!result2.success) {
+                    showStatus(`2. Kanun maddesi bulunamadı (${law2} M.${article2})`, 'error');
+                    return;
+                }
+
+                const relation = {
+                    source: `${law1}-${article1}`,
+                    target: `${law2}-${article2}`,
+                    sourceData: result1.article,
+                    targetData: result2.article
+                };
+
+                // Aynı ilişki var mı kontrol et
+                const exists = relations.some(r => 
+                    (r.source === relation.source && r.target === relation.target) ||
+                    (r.source === relation.target && r.target === relation.source)
+                );
+
+                if (exists) {
+                    showStatus('Bu ilişki zaten mevcut', 'error');
+                    return;
+                }
+
+                relations.push(relation);
+                updateVisualization();
+                updateRelationsList();
+                saveRelations();
+                showStatus('İlişki başarıyla eklendi', 'success');
+
+                // Form temizle
+                document.getElementById('law1').value = '';
+                document.getElementById('article1').value = '';
+                document.getElementById('law2').value = '';
+                document.getElementById('article2').value = '';
+
+            } catch (error) {
+                console.error('İlişki ekleme hatası:', error);
+                showStatus('İlişki ekleme hatası', 'error');
+            }
+        }
+
+        // Kanun ve madde dropdownlarını doldur
+        async function populateLawDropdowns() {
+            const response = await fetch('/api/laws');
+            const laws = await response.json();
+            ['law1', 'law2'].forEach(lawId => {
+                const select = document.getElementById(lawId);
+                select.innerHTML = '';
+                Object.values(laws).forEach(law => {
+                    const option = document.createElement('option');
+                    option.value = law.kanun_numarasi;
+                    option.textContent = `${law.kanun_numarasi} - ${law['Kanun Adı']}`;
+                    select.appendChild(option);
+                });
+                // İlk kanun için maddeleri doldur
+                populateArticles(lawId, lawId === 'law1' ? 'article1' : 'article2');
+            });
+        }
+
+        // Seçilen kanunun maddelerini doldur
+        async function populateArticles(lawSelectId, articleSelectId) {
+            const lawNo = document.getElementById(lawSelectId).value;
+            const response = await fetch('/api/laws');
+            const laws = await response.json();
+            const law = Object.values(laws).find(l => l.kanun_numarasi === lawNo);
+            const articleSelect = document.getElementById(articleSelectId);
+            articleSelect.innerHTML = '';
+            if (law && law.maddeler && law.maddeler.length > 0) {
+                law.maddeler.forEach((madde, idx) => {
+                    const option = document.createElement('option');
+                    option.value = idx + 1;
+                    option.textContent = `Madde ${idx + 1}`;
+                    articleSelect.appendChild(option);
+                });
+            } else {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Madde yok';
+                articleSelect.appendChild(option);
+            }
+        }
+
+        // Sayfa yüklendiğinde dropdownları doldur
+        document.addEventListener('DOMContentLoaded', function() {
+            populateLawDropdowns();
+            loadData();
+            loadRelations();
+        });
+
+        // Socket olayları
+        socket.on('connected', function(data) {
+            showStatus('Bağlantı kuruldu', 'success');
+        });
+
+        socket.on('data_updated', function(data) {
+            showStatus('Kanun verileri güncellendi', 'info');
+            loadData();
+        });
+
+        socket.on('law_add_result', function(data) {
+            hideLoading();
+            document.getElementById('addLawBtn').disabled = false;
+            
+            if (data.success) {
+                showStatus(data.message, 'success');
+                loadData();
+            } else {
+                showStatus(data.message, 'error');
+            }
+        });
+
+        socket.on('relations_updated', function(data) {
+            relations = data;
+            updateVisualization();
+            updateRelationsList();
+        });
+
+        // Veri yükleme fonksiyonları
+        async function loadData() {
+            try {
+                const response = await fetch('/api/laws');
+                lawData = await response.json();
+                console.log('Kanun verileri yüklendi:', Object.keys(lawData).length, 'kanun');
+            } catch (error) {
+                console.error('Veri yükleme hatası:', error);
+                showStatus('Veri yükleme hatası', 'error');
+            }
+        }
+
+        async function loadRelations() {
+            try {
+                const response = await fetch('/api/relations');
+                relations = await response.json();
+                updateVisualization();
+                updateRelationsList();
+            } catch (error) {
+                console.error('İlişki yükleme hatası:', error);
+            }
+        }
+
+        async function saveRelations() {
+            try {
+                await fetch('/api/relations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(relations)
+                });
+            } catch (error) {
+                console.error('İlişki kaydetme hatası:', error);
+            }
+        }
+
+        // Kanun ekleme
+        async function addLaw() {
+            const lawNumber = document.getElementById('newLawNumber').value;
+            if (!lawNumber) {
+                showStatus('Lütfen kanun numarası girin', 'error');
+                return;
+            }
+
+            document.getElementById('addLawBtn').disabled = true;
+            showLoading();
+
+            try {
+                const response = await fetch('/api/add_law', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ law_number: lawNumber })
+                });
+
+                const result = await response.json();
+                showStatus(result.message, 'info');
+                document.getElementById('newLawNumber').value = '';
+            } catch (error) {
+                hideLoading();
+                document.getElementById('addLawBtn').disabled = false;
+                showStatus('Kanun ekleme hatası', 'error');
+            }
+        }
+
+        // Ham veri testi
+        async function testRawData() {
+            try {
+                const response = await fetch('/api/test/raw_data');
+                const data = await response.json();
+                console.log('Ham Veri:', data);
+                
+                const detailsDiv = document.getElementById('lawDetails');
+                detailsDiv.innerHTML = `
+                    <h3>📄 Ham Veri Bilgisi</h3>
+                    <div class="law-details">
+                        <div class="law-content">
+                            <strong>Dosya Var mı:</strong> ${data.file_exists ? 'Evet' : 'Hayır'}<br/>
+                            <strong>Dosya Boyutu:</strong> ${data.file_size || 'N/A'} karakter<br/>
+                            <strong>Hata:</strong> ${data.error || 'Yok'}<br/>
+                            <strong>İlk Karakterler:</strong><br/>
+                            <pre style="font-size: 10px; background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; max-height: 300px;">${data.first_chars || 'Veri yok'}</pre>
+                        </div>
+                    </div>
+                `;
+                
+                showStatus('Ham veri bilgisi yüklendi', 'info');
+            } catch (error) {
+                console.error('Ham veri testi hatası:', error);
+                showStatus('Ham veri testi hatası', 'error');
+            }
+        }
+
+        // Madde arama testi
+        async function testSearchArticles() {
+            const lawNumber = prompt('Test etmek istediğiniz kanun numarasını girin (örn: 2709):', '2709');
+            if (!lawNumber) return;
+            
+            try {
+                const response = await fetch(`/api/test/search_all_articles/${lawNumber}`);
+                const data = await response.json();
+                console.log('Madde Arama Testi:', data);
+                
+                const detailsDiv = document.getElementById('lawDetails');
+                detailsDiv.innerHTML = `
+                    <h3>🔍 Madde Arama Testi (${lawNumber})</h3>
+                    <div class="law-details">
+                        <div class="law-content">
+                            <strong>Aranan Kanun:</strong> ${data.law_number_searched}<br/>
+                            <strong>Bulunan Kanun:</strong> ${data.found_law ? data.found_law['Kanun Adı'] : 'Bulunamadı'}<br/>
+                            <strong>Madde Sayısı:</strong> ${data.all_articles.length}<br/>
+                            <br/>
+                            <strong>Bulunan Maddeler:</strong><br/>
+                            <div style="max-height: 300px; overflow-y: auto;">
+                                ${data.all_articles.map(article => `
+                                    <div style="margin: 5px 0; padding: 5px; background: #f8f9fa; border-radius: 3px;">
+                                        <strong>Orijinal:</strong> ${article.original}<br/>
+                                        <strong>Temizlenmiş:</strong> ${article.cleaned}<br/>
+                                        <strong>Metin:</strong> ${article.text_preview}
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <br/>
+                            <strong>Arama Debug:</strong><br/>
+                            <pre style="font-size: 10px; background: #f0f0f0; padding: 5px; border-radius: 3px;">${JSON.stringify(data.search_debug, null, 2)}</pre>
+                        </div>
+                    </div>
+                `;
+                
+                showStatus(`Madde testi tamamlandı: ${data.all_articles.length} madde bulundu`, 'info');
+            } catch (error) {
+                console.error('Madde testi hatası:', error);
+                showStatus('Madde testi hatası', 'error');
+            }
+        }
+        async function debugData() {
+            try {
+                const response = await fetch('/api/debug/laws');
+                const debugInfo = await response.json();
+                console.log('Debug Bilgisi:', debugInfo);
+                
+                const detailsDiv = document.getElementById('lawDetails');
+                detailsDiv.innerHTML = `
+                    <h3>🔍 Debug Bilgisi</h3>
+                    <div class="law-details">
+                        <div class="law-content">
+                            <strong>Veri Tipi:</strong> ${debugInfo.data_type}<br/>
+                            <strong>Veri Uzunluğu:</strong> ${debugInfo.data_length}<br/>
+                            <strong>Örnek Yapı:</strong><br/>
+                            <pre style="font-size: 11px; background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto;">${JSON.stringify(debugInfo.sample_structure, null, 2)}</pre>
+                        </div>
+                    </div>
+                `;
+                
+                showStatus('Debug bilgisi yüklendi (konsola da bakın)', 'info');
+            } catch (error) {
+                console.error('Debug bilgisi yükleme hatası:', error);
+                showStatus('Debug bilgisi yükleme hatası', 'error');
+            }
+        }
+
+        // Gelişmiş debug arama
+        async function debugArticleSearch(law1, article1) {
+            try {
+                const response = await fetch('/api/debug/find_article', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ law_number: law1, article_number: article1 })
+                });
+
+                const debugInfo = await response.json();
+                console.log('Madde Arama Debug:', debugInfo);
+                return debugInfo;
+            } catch (error) {
+                console.error('Debug arama hatası:', error);
+                return null;
+            }
+        }
+
+        // İlişki ekleme fonksiyonunu güncelle
+        async function addRelation() {
+            const law1 = document.getElementById('law1').value;
+            const article1 = document.getElementById('article1').value;
+            const law2 = document.getElementById('law2').value;
+            const article2 = document.getElementById('article2').value;
+
+            if (!law1 || !article1 || !law2 || !article2) {
+                showStatus('Lütfen tüm alanları doldurun', 'error');
+                return;
+            }
+
+            try {
+                // Debug bilgisi al
+                const debug1 = await debugArticleSearch(law1, article1);
+                const debug2 = await debugArticleSearch(law2, article2);
+                
+                console.log('Debug 1:', debug1);
+                console.log('Debug 2:', debug2);
+
+                // Maddeleri kontrol et
+                const response1 = await fetch('/api/find_article', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ law_number: law1, article_number: article1 })
+                });
+
+                const response2 = await fetch('/api/find_article', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ law_number: law2, article_number: article2 })
+                });
+
+                const result1 = await response1.json();
+                const result2 = await response2.json();
+
+                console.log('Result 1:', result1);
+                console.log('Result 2:', result2);
+
+                if (!result1.success) {
+                    showStatus(`1. Kanun maddesi bulunamadı (${law1} M.${article1})`, 'error');
+                    return;
+                }
+                
+                if (!result2.success) {
+                    showStatus(`2. Kanun maddesi bulunamadı (${law2} M.${article2})`, 'error');
+                    return;
+                }
+
+                const relation = {
+                    source: `${law1}-${article1}`,
+                    target: `${law2}-${article2}`,
+                    sourceData: result1.article,
+                    targetData: result2.article
+                };
+
+                // Aynı ilişki var mı kontrol et
+                const exists = relations.some(r => 
+                    (r.source === relation.source && r.target === relation.target) ||
+                    (r.source === relation.target && r.target === relation.source)
+                );
+
+                if (exists) {
+                    showStatus('Bu ilişki zaten mevcut', 'error');
+                    return;
+                }
+
+                relations.push(relation);
+                updateVisualization();
+                updateRelationsList();
+                saveRelations();
+                showStatus('İlişki başarıyla eklendi', 'success');
+
+                // Form temizle
+                document.getElementById('law1').value = '';
+                document.getElementById('article1').value = '';
+                document.getElementById('law2').value = '';
+                document.getElementById('article2').value = '';
+
+            } catch (error) {
+                console.error('İlişki ekleme hatası:', error);
+                showStatus('İlişki ekleme hatası', 'error');
+            }
+        }
+
+        // Görselleştirme fonksiyonları
+        function updateVisualization() {
+            const nodeSet = new Set();
+            relations.forEach(rel => {
+                nodeSet.add(rel.source);
+                nodeSet.add(rel.target);
+            });
+
+            nodes = Array.from(nodeSet).map(id => {
+                const relation = relations.find(r => r.source === id || r.target === id);
+                const data = relation.source === id ? relation.sourceData : relation.targetData;
+                return {
+                    id: id,
+                    data: data,
+                    // Kanun adı, kanun no ve madde no modern şekilde label'a eklendi
+                    labelLines: [
+                        data.lawTitle || "Kanun Adı Yok",
+                        `No: ${data.lawNumber}`,
+                        `Madde: ${data.articleNumber}`
+                    ]
+                };
+            });
+
+            links = relations.map(rel => ({
+                source: rel.source,
+                target: rel.target
+            }));
+
+            renderGraph();
+        }
+
+        function renderGraph() {
+            const container = document.querySelector('.visualization');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            svg.selectAll("*").remove();
+            svg.attr("width", width).attr("height", height);
+
+            if (nodes.length === 0) return;
+
+            simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(links).id(d => d.id).distance(140))
+                .force("charge", d3.forceManyBody().strength(-500))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collision", d3.forceCollide().radius(45));
+
+            const link = svg.append("g")
+                .selectAll("line")
+                .data(links)
+                .join("line")
+                .attr("class", "link")
+                .attr("stroke", "#b2bec3")
+                .attr("stroke-width", 3)
+                .attr("stroke-dasharray", "4 2");
+
+            const node = svg.append("g")
+                .selectAll("circle")
+                .data(nodes)
+                .join("circle")
+                .attr("class", "node")
+                .attr("r", 38)
+                .attr("fill", d => {
+                    const colors = ['#C0C0C0', '#B8E5FF', '#000000', '#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#000080'];
+                    return colors[Math.abs(hashCode(d.data.lawNumber)) % colors.length];
+                })
+                .attr("stroke", "#fff")
+                .attr("stroke-width", 4)
+                .style("filter", "drop-shadow(0 2px 8px rgba(44,62,80,0.10))")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended))
+                .on("click", function(event, d) {
+                    showLawDetails(d.data);
+                });
+
+            // Modern label grubu
+            const labelGroup = svg.append("g")
+                .selectAll("g")
+                .data(nodes)
+                .join("g")
+                .attr("class", "node-label-group");
+
+            labelGroup.each(function(d) {
+                const g = d3.select(this);
+                d.labelLines.forEach((line, i) => {
+                    g.append("text")
+                        .attr("class", "node-label")
+                        .attr("text-anchor", "middle")
+                        .attr("font-size", i === 0 ? 15 : 13)
+                        .attr("font-weight", i === 0 ? "bold" : "normal")
+                        .attr("fill", i === 0 ? "#22223b" : "#4a4e69")
+                        .attr("y", -45 + i * 18) // node'un üstüne hizala
+                        .text(line);
+                });
+            });
+
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                node
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+
+                labelGroup
+                    .attr("transform", d => `translate(${d.x},${d.y})`);
+            });
+        }
+
+        function showLawDetails(data) {
+            const detailsDiv = document.getElementById('lawDetails');
+            detailsDiv.innerHTML = `
+        <div class="law-details">
+            <div class="law-title">${data.lawTitle} (${data.lawNumber})</div>
+            <div class="law-content">
+                <strong>Madde ${data.articleNumber}:</strong><br/>
+                <div style="margin-top: 10px; padding: 10px; background: #ecf0f1; border-radius: 4px; max-height: 250px; overflow-y: auto;">
+                    ${data.articleContent || ""}
+                </div>
+            </div>
+        </div>
+    `;
+        }
+
+        function updateRelationsList() {
+            const relationsDiv = document.getElementById('relationsList');
+            if (relations.length === 0) {
+                relationsDiv.innerHTML = '<p>Henüz ilişki eklenmedi.</p>';
+                return;
+            }
+
+            relationsDiv.innerHTML = relations.map((rel, index) => `
+                <div class="relation-item">
+                    <div class="relation-text">
+                        <strong>${rel.sourceData.lawNumber} M.${rel.sourceData.articleNumber}</strong> 
+                        ↔ 
+                        <strong>${rel.targetData.lawNumber} M.${rel.targetData.articleNumber}</strong>
+                    </div>
+                    <button class="relation-remove" onclick="removeRelation(${index})">🗑️</button>
+                </div>
+            `).join('');
+        }
+
+        function removeRelation(index) {
+            relations.splice(index, 1);
+            updateVisualization();
+            updateRelationsList();
+            saveRelations();
+            showStatus('İlişki kaldırıldı', 'success');
+        }
+
+        function clearAll() {
+            if (confirm('Tüm ilişkiler silinecek. Emin misiniz?')) {
+                relations = [];
+                nodes = [];
+                links = [];
+                svg.selectAll("*").remove();
+                updateRelationsList();
+                saveRelations();
+                document.getElementById('lawDetails').innerHTML = '<p>Bir kanun maddesine tıklayın veya üzerine gelin.</p>';
+                showStatus('Tüm ilişkiler temizlendi', 'success');
+            }
+        }
+
+        // Yardımcı fonksiyonlar
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type} show`;
+            setTimeout(() => {
+                status.classList.remove('show');
+            }, 3000);
+        }
+
+        function showLoading() {
+            document.getElementById('loading').classList.add('show');
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('show');
+        }
+
+        function hashCode(str) {
+            let hash = 0;
+            if (str.length === 0) return hash;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return hash;
+        }
+
+        // Drag fonksiyonları
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        // Klavye kısayolları
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                addRelation();
+            }
+        });
+
+        // Pencere yeniden boyutlandırma
+        window.addEventListener('resize', function() {
+            if (nodes.length > 0) {
+                setTimeout(renderGraph, 100);
+            }
+        });
+
+        // Enter tuşu ile form gönderme
+        document.getElementById('newLawNumber').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                addLaw();
+            }
+        });
+
+        ['law1', 'article1', 'law2', 'article2'].forEach(id => {
+            document.getElementById(id).addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    addRelation();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
